@@ -1,3 +1,18 @@
+/* 1) RESET & FULL-SCREEN ROOT */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 2) TYPOGRAPHY & COLORS */
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -13,6 +28,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 3) LINKS */
 a {
   font-weight: 500;
   color: #646cff;
@@ -22,19 +38,11 @@ a:hover {
   color: #535bf2;
 }
 
-body {
-  margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
-}
-
+/* 4) HEADINGS, BUTTONS, ETC. */
 h1 {
   font-size: 3.2em;
   line-height: 1.1;
 }
-
 button {
   border-radius: 8px;
   border: 1px solid transparent;
@@ -54,6 +62,40 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+/* 5) YOUR LOGO & CARD STYLES (from app.css) */
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+.card {
+  padding: 2em;
+}
+.read-the-docs {
+  color: #888;
+}
+
+/* 6) DARK / LIGHT MODE OVERRIDES */
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
@@ -65,4 +107,11 @@ button:focus-visible {
   button {
     background-color: #f9f9f9;
   }
+}
+
+/* 7) FULL-SCREEN CANVAS RULES */
+canvas {
+  display: block; /* remove inline-block gap */
+  width: 100% !important;
+  height: 100% !important;
 }
