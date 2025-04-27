@@ -1,103 +1,116 @@
 import { forwardRef, useRef, useMemo, useEffect } from "react";
 import { useFrame, useThree, useLoader } from "@react-three/fiber";
 import * as THREE from "three";
+import { AudioLoader } from "three";
 import { useCarControls } from "../hooks/useCarControls";
 import { useGLTF } from "@react-three/drei";
 
 const Car = forwardRef(({ url = "/models/car.glb", scale = 1 }, ref) => {
-  // — Model
+  // load & clone model
   const { scene } = useGLTF(url);
   const model = useMemo(() => scene.clone(), [scene]);
 
-  // — Controls & movement
+  // collect wheel meshes
+  const wheelNames = [
+    "Object_88",
+    "Object_89", // front-left
+    "Object_11",
+    "Object_12", // front-right
+    "Object_117",
+    "Object_118", // rear-left
+    "Object_8",
+    "Object_9", // rear-right
+  ];
+  const wheels = useMemo(
+    () => wheelNames.map((name) => model.getObjectByName(name)).filter(Boolean),
+    [model]
+  );
+
+  // input & movement state
   const keys = useCarControls();
   const velocity = useRef(0);
   const maxSpeed = 20;
   const accelRate = 8;
-  const tmpVec = useRef(new THREE.Vector3()).current;
+  const tmp = useRef(new THREE.Vector3()).current;
 
-  // — Audio: idle + engine loops
+  // audio setup
   const { camera } = useThree();
-  const idleRef = useRef();
-  const engineRef = useRef();
-  const idleBuffer = useLoader(THREE.AudioLoader, "/audio/idle.wav");
-  const engineBuffer = useLoader(THREE.AudioLoader, "/audio/engine.wav");
+  const idleBuf = useLoader(AudioLoader, "/audio/idle.wav");
+  const engineBuf = useLoader(AudioLoader, "/audio/engine.wav");
+  const audioRef = useRef({ idle: null, rev: null });
 
   useEffect(() => {
     const listener = new THREE.AudioListener();
     camera.add(listener);
-
-    // resume context on first interaction
-    const resume = () => {
-      if (listener.context.state === "suspended") listener.context.resume();
-      window.removeEventListener("pointerdown", resume);
-      window.removeEventListener("keydown", resume);
-    };
+    // resume on interaction
+    const resume = () =>
+      listener.context.state === "suspended" && listener.context.resume();
     window.addEventListener("pointerdown", resume);
     window.addEventListener("keydown", resume);
 
-    // idle loop: low constant volume
+    // idle sound
     const idleSound = new THREE.PositionalAudio(listener);
-    idleSound.setBuffer(idleBuffer);
+    idleSound.setBuffer(idleBuf);
     idleSound.setLoop(true);
     idleSound.setRefDistance(5);
-    idleSound.setVolume(0.3); // constant
+    idleSound.setVolume(0.3);
     idleSound.play();
     ref.current.add(idleSound);
-    idleRef.current = idleSound;
 
-    // engine loop: silent until throttle > threshold
-    const engineSound = new THREE.PositionalAudio(listener);
-    engineSound.setBuffer(engineBuffer);
-    engineSound.setLoop(true);
-    engineSound.setRefDistance(5);
-    engineSound.setVolume(0); // start silent
-    engineSound.play();
-    ref.current.add(engineSound);
-    engineRef.current = engineSound;
+    // engine sound
+    const revSound = new THREE.PositionalAudio(listener);
+    revSound.setBuffer(engineBuf);
+    revSound.setLoop(true);
+    revSound.setRefDistance(5);
+    revSound.setVolume(0);
+    revSound.play();
+    ref.current.add(revSound);
+
+    audioRef.current = { idle: idleSound, rev: revSound };
 
     return () => {
       camera.remove(listener);
       window.removeEventListener("pointerdown", resume);
       window.removeEventListener("keydown", resume);
     };
-  }, [camera, idleBuffer, engineBuffer, ref]);
+  }, [camera, idleBuf, engineBuf, ref]);
 
   useFrame((_, delta) => {
-    // 1) throttle target
-    let target = 0;
-    if (keys.up) target = maxSpeed;
-    if (keys.down) target = -maxSpeed;
-
-    // 2) smooth velocity
+    // update velocity
+    let target = keys.up ? maxSpeed : keys.down ? -maxSpeed : 0;
     velocity.current = THREE.MathUtils.lerp(
       velocity.current,
       target,
       accelRate * delta
     );
 
-    // 3) throttle fraction
-    const tRaw = Math.abs(velocity.current) / maxSpeed;
-    const threshold = 0.1;
-    const t = tRaw < threshold ? 0 : (tRaw - threshold) / (1 - threshold);
+    // move car
+    ref.current.getWorldDirection(tmp);
+    tmp.normalize();
+    ref.current.position.addScaledVector(tmp, velocity.current * delta);
 
-    // engine volume & pitch
-    if (engineRef.current) {
-      engineRef.current.setVolume(THREE.MathUtils.lerp(0, 1.0, t));
-      engineRef.current.playbackRate = THREE.MathUtils.lerp(1.0, 1.4, t);
-    }
+    // spin wheels
+    const spinAngle = (velocity.current * delta) / 0.4;
+    wheels.forEach((w) => {
+      // rotate around each wheel's local X axis for consistent spinning
+      w.rotateX(spinAngle);
+    });
 
-    // 4) steering
+    // body steering
     if (Math.abs(velocity.current) > 0.5) {
       const dir = Math.sign(velocity.current);
       if (keys.left) ref.current.rotation.y += Math.PI * delta * dir;
       if (keys.right) ref.current.rotation.y -= Math.PI * delta * dir;
     }
 
-    // 5) move
-    ref.current.getWorldDirection(tmpVec);
-    tmpVec.normalize();
-    ref.current.position.addScaledVector(tmpVec, velocity.current * delta);
+    // audio crossfade
+    const { idle, rev } = audioRef.current;
+    if (idle && rev) {
+      const t = Math.min(Math.abs(velocity.current) / maxSpeed, 1);
+      idle.setVolume(THREE.MathUtils.lerp(0.3, 0.1, t));
+      rev.setVolume(THREE.MathUtils.lerp(0, 1, t));
+      rev.playbackRate = THREE.MathUtils.lerp(1, 1.4, t);
+    }
   });
 
   return (
