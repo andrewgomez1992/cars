@@ -10,23 +10,41 @@ const Car = forwardRef(({ url = "/models/car.glb", scale = 1 }, ref) => {
   const { scene } = useGLTF(url);
   const model = useMemo(() => scene.clone(), [scene]);
 
-  // collect wheel meshes
-  const wheelNames = [
-    "Object_88",
-    "Object_89", // front-left
-    "Object_11",
-    "Object_12", // front-right
-    "Object_117",
-    "Object_118", // rear-left
-    "Object_8",
-    "Object_9", // rear-right
-  ];
-  const wheels = useMemo(
-    () => wheelNames.map((name) => model.getObjectByName(name)).filter(Boolean),
-    [model]
-  );
+  // create pivot objects for front wheels and gather rear wheels
+  const { frontPivots, rearWheels } = useMemo(() => {
+    const frontNames = ["Object_88", "Object_89", "Object_11", "Object_12"];
+    const rearNames = ["Object_117", "Object_118", "Object_8", "Object_9"];
+    const fronts = [];
+    const rears = [];
 
-  // input & movement state
+    // setup front wheel pivots
+    frontNames.forEach((name) => {
+      const wheel = model.getObjectByName(name);
+      if (!wheel) return;
+      const parent = wheel.parent;
+      // create pivot at wheel position
+      const pivot = new THREE.Object3D();
+      parent.add(pivot);
+      pivot.position.copy(wheel.position);
+      pivot.rotation.set(0, 0, 0);
+      pivot.scale.set(1, 1, 1);
+      // re-parent wheel under pivot
+      wheel.position.set(0, 0, 0);
+      parent.remove(wheel);
+      pivot.add(wheel);
+      fronts.push(pivot);
+    });
+
+    // gather rear wheels directly
+    rearNames.forEach((name) => {
+      const wheel = model.getObjectByName(name);
+      if (wheel) rears.push(wheel);
+    });
+
+    return { frontPivots: fronts, rearWheels: rears };
+  }, [model]);
+
+  // input & motion state
   const keys = useCarControls();
   const velocity = useRef(0);
   const maxSpeed = 20;
@@ -75,6 +93,7 @@ const Car = forwardRef(({ url = "/models/car.glb", scale = 1 }, ref) => {
     };
   }, [camera, idleBuf, engineBuf, ref]);
 
+  // drive & animate
   useFrame((_, delta) => {
     // update velocity
     let target = keys.up ? maxSpeed : keys.down ? -maxSpeed : 0;
@@ -89,12 +108,16 @@ const Car = forwardRef(({ url = "/models/car.glb", scale = 1 }, ref) => {
     tmp.normalize();
     ref.current.position.addScaledVector(tmp, velocity.current * delta);
 
-    // spin wheels
-    const spinAngle = (velocity.current * delta) / 0.4;
-    wheels.forEach((w) => {
-      // rotate around each wheel's local X axis for consistent spinning
-      w.rotateX(spinAngle);
-    });
+    // spin all wheels around their local X
+    const spin = (velocity.current * delta) / 0.4;
+    frontPivots.forEach((p) => p.children[0].rotateX(spin));
+    rearWheels.forEach((w) => w.rotateX(spin));
+
+    // steer front wheels: rotate pivots, not meshes
+    const steerSign = keys.left ? 1 : keys.right ? -1 : 0;
+    const maxSteer = Math.PI / 6;
+    const steerAngle = steerSign * maxSteer;
+    frontPivots.forEach((p) => (p.rotation.y = steerAngle));
 
     // body steering
     if (Math.abs(velocity.current) > 0.5) {
