@@ -1,14 +1,27 @@
+// src/scenes/PortfolioScene.jsx
+
 import { useRef, Suspense } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Sky, Environment, OrthographicCamera } from "@react-three/drei";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Sky, Environment, OrbitControls } from "@react-three/drei";
 import Car from "../components/Car";
 import Ground from "../components/Ground";
 import Road from "../components/Road";
 import { TriggerZone } from "../components/TriggerZone";
-import { FollowCamera } from "../components/FollowCamera";
+
+// CameraFollow lives inside the Canvas so useFrame is valid
+const CameraFollow = ({ controls, target }) => {
+  useFrame(() => {
+    if (controls.current && target.current) {
+      controls.current.target.lerp(target.current.position, 0.1);
+      controls.current.update();
+    }
+  });
+  return null;
+};
 
 const PortfolioScene = ({ onEnterZone, onLeaveZone }) => {
   const carRef = useRef();
+  const controls = useRef();
 
   return (
     <Canvas
@@ -31,27 +44,38 @@ const PortfolioScene = ({ onEnterZone, onLeaveZone }) => {
       />
 
       <Suspense fallback={null}>
-        {/* Central Plaza ground */}
+        {/* Plaza & Road */}
         <Ground size={30} color="#444" />
-
-        {/* Skills Avenue road */}
         <Road width={6} length={50} repeat={20} position={[0, 0.02, -25]} />
 
-        {/* Driveable Car */}
+        {/* Drivable car */}
         <Car ref={carRef} scale={1} />
 
-        {/* Trigger zone for Skills */}
+        {/* Trigger zone */}
         <TriggerZone
           target={carRef}
           position={[0, 1, -12]}
           size={[8, 2, 20]}
           onEnter={() => onEnterZone("skills")}
-          onLeave={() => onLeaveZone()}
+          onLeave={onLeaveZone}
         />
       </Suspense>
 
-      {/* Chase camera */}
-      <FollowCamera target={carRef} offset={[0, 12, -18]} />
+      {/* Orbit controls for zoom & rotate */}
+      <OrbitControls
+        ref={controls}
+        makeDefault
+        enablePan={false}
+        enableZoom
+        enableRotate
+        minDistance={5}
+        maxDistance={50}
+        zoomSpeed={0.6}
+        rotateSpeed={0.4}
+      />
+
+      {/* Camera follow logic inside Canvas */}
+      <CameraFollow controls={controls} target={carRef} />
     </Canvas>
   );
 };
